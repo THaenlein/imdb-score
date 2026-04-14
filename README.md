@@ -2,7 +2,8 @@
 
 ## Description
 Some userscripts for IMDB:
-* IMDB-score
+* ~~IMDB-score~~
+  * **Outdated because IMDB now provides this feature by default**
   * Shows the corresponding IMDB-score for each movie in the filmogrophy of an actor
 * IMDB-average-season-score
   * Calculates the average score for the selected season of any series
@@ -14,7 +15,7 @@ You need a scriptmanager like Tampermonkey or Greasemonkey installed in you brow
 
 ## Install
 Install the script either by clicking the hyperlinks below or download the script and add it to your scriptmanager manually.
-* [Install Filmography Score][install-IMDB-score]
+* ~~[Install Filmography Score][install-IMDB-score]~~
 * [Install Season Score][install-IMDB-average-season-score]
 
 [install-IMDB-score]: https://github.com/THaenlein/imdb-score-filmography/raw/master/IMDB-score.user.js
