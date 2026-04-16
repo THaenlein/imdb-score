@@ -166,22 +166,76 @@ function calculateAverageScore() {
 }
 
 function setupAverageScoreObserver() {
-    var observer;
+    var mainObserver;
+    var rootObserver;
+    var observedMain = null;
     var timeoutId;
-    var main = document.querySelector("main");
+    var lastUrl = window.location.href;
+    var originalPushState;
+    var originalReplaceState;
 
-    if (!main) {
-        return;
-    }
-
-    calculateAverageScore();
-
-    observer = new MutationObserver(function () {
+    function scheduleAverageScoreCalculation() {
         clearTimeout(timeoutId);
         timeoutId = setTimeout(calculateAverageScore, 200);
-    });
+    }
 
-    observer.observe(main, { childList: true, subtree: true });
+    function attachMainObserverIfNeeded() {
+        var main = document.querySelector("main");
+
+        if (!main || main === observedMain) {
+            return;
+        }
+
+        if (mainObserver) {
+            mainObserver.disconnect();
+        }
+
+        observedMain = main;
+        mainObserver = new MutationObserver(scheduleAverageScoreCalculation);
+        mainObserver.observe(main, { childList: true, subtree: true });
+        scheduleAverageScoreCalculation();
+    }
+
+    function handleLocationChange() {
+        if (window.location.href === lastUrl) {
+            return;
+        }
+        lastUrl = window.location.href;
+        attachMainObserverIfNeeded();
+        scheduleAverageScoreCalculation();
+    }
+
+    attachMainObserverIfNeeded();
+
+    if (document.body) {
+        rootObserver = new MutationObserver(function () {
+            attachMainObserverIfNeeded();
+            handleLocationChange();
+        });
+        rootObserver.observe(document.body, { childList: true, subtree: true });
+    }
+
+    window.addEventListener("popstate", handleLocationChange);
+    window.addEventListener("hashchange", handleLocationChange);
+
+    if (!window.__imdbAverageSeasonScoreHistoryPatched) {
+        originalPushState = history.pushState;
+        originalReplaceState = history.replaceState;
+
+        history.pushState = function () {
+            originalPushState.apply(history, arguments);
+            window.dispatchEvent(new Event("imdbAverageSeasonScore:navigation"));
+        };
+
+        history.replaceState = function () {
+            originalReplaceState.apply(history, arguments);
+            window.dispatchEvent(new Event("imdbAverageSeasonScore:navigation"));
+        };
+
+        window.__imdbAverageSeasonScoreHistoryPatched = true;
+    }
+
+    window.addEventListener("imdbAverageSeasonScore:navigation", handleLocationChange);
 }
 
 setupAverageScoreObserver();
