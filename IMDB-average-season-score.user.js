@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         IMDB-average-season-score
 // @description  Shows the average score of a season from any series.
-// @version      0.1
+// @version      0.2
 
 // @author       Tim Hänlein
 // @namespace    https://github.com/THaenlein
-// @downloadURL  https://github.com/THaenlein/imdb-score-filmography/blob/master/IMDB-score.user.js
+// @downloadURL  https://github.com/THaenlein/imdb-score-filmography/raw/master/IMDB-average-season-score.user.js
 
-// @match        http*://www.imdb.com/title/*/episodes?*
+// @match        *://www.imdb.com/title/*/episodes*
+// @match        *://www.imdb.com/*/title/*/episodes*
 // @run-at       document-end
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
@@ -39,36 +40,148 @@
 */
 
 
-function calculateAverageScore()
-{
-    var list = document.getElementsByClassName("list detail eplist")[0].children;
-    var items = list.length;
-    var i;
-    var averageRating = 0;
-    var ratings = document.getElementsByClassName("ipl-rating-star small");
-    var seasonElement = document.getElementById("episode_top");
-    var scoreElement = document.createElement("h3");
-
-    for (i = 0; i < items; i++)
-    {
-        averageRating = averageRating + Number(ratings[i].children[1].innerHTML);
-    }
-
-    averageRating = averageRating / items;
-
-    scoreElement.innerHTML = averageRating.toFixed(1) + "\u2b50";
-    scoreElement.setAttribute("id","averageRating");
-    seasonElement.appendChild(scoreElement);
-    //seasonElement.innerHTML = seasonElement.innerHTML + "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" + averageRating.toFixed(2) + "\u2b50";
+function getCurrentTitleId() {
+    var match = window.location.pathname.match(/\/title\/(tt\d+)/);
+    return match ? match[1] : "";
 }
 
-$(document).ready(function ()
-{
-    calculateAverageScore();
-    setInterval(function(){
-        if(document.getElementById("averageRating") == null)
-        {
-            calculateAverageScore();
+function parseRatingValue(text) {
+    var valueMatch;
+    var value;
+
+    if (!text) {
+        return NaN;
+    }
+
+    valueMatch = text.match(/(\d+(?:[.,]\d+)?)\s*\/\s*10/);
+    if (!valueMatch) {
+        return NaN;
+    }
+
+    value = Number(valueMatch[1].replace(",", "."));
+    if (isNaN(value) || value <= 0 || value > 10) {
+        return NaN;
+    }
+
+    return value;
+}
+
+function extractEpisodeId(container, currentTitleId) {
+    var links = container.querySelectorAll('a[href*="/title/tt"]');
+    var i;
+    var idMatch;
+    var id;
+
+    for (i = 0; i < links.length; i++) {
+        idMatch = links[i].getAttribute("href").match(/\/title\/(tt\d+)/);
+        if (!idMatch) {
+            continue;
         }
-    }, 1000);
-})
+
+        id = idMatch[1];
+        if (id !== currentTitleId) {
+            return id;
+        }
+    }
+
+    return "";
+}
+
+function getEpisodeRatings() {
+    var currentTitleId = getCurrentTitleId();
+    var cards = document.querySelectorAll("main article");
+    var seenEpisodeIds = {};
+    var ratings = [];
+    var i;
+    var episodeId;
+    var ratingElement;
+    var value;
+    var cardText;
+
+    for (i = 0; i < cards.length; i++) {
+        cardText = cards[i].textContent || "";
+        if (!/S\d+\.\s*E\d+/i.test(cardText)) {
+            continue;
+        }
+
+        episodeId = extractEpisodeId(cards[i], currentTitleId);
+        if (!episodeId || seenEpisodeIds[episodeId]) {
+            continue;
+        }
+
+        ratingElement = cards[i].querySelector(".ipc-rating-star--imdb");
+        value = parseRatingValue(ratingElement ? ratingElement.textContent : cardText);
+
+        if (!isNaN(value)) {
+            seenEpisodeIds[episodeId] = true;
+            ratings.push(value);
+        }
+    }
+
+    return ratings;
+}
+
+function getInsertTarget() {
+    var heading = document.querySelector('main h2, main h1');
+    if (heading && heading.parentElement) {
+        return heading.parentElement;
+    }
+    return document.querySelector("main");
+}
+
+function renderAverageScore(ratings) {
+    var existing = document.getElementById("averageRating");
+    var target = getInsertTarget();
+    var scoreElement;
+    var sum = 0;
+    var averageRating;
+    var i;
+
+    if (!target) {
+        return;
+    }
+
+    if (existing) {
+        existing.remove();
+    }
+
+    if (!ratings.length) {
+        return;
+    }
+
+    for (i = 0; i < ratings.length; i++) {
+        sum = sum + ratings[i];
+    }
+    averageRating = sum / ratings.length;
+
+    scoreElement = document.createElement("h3");
+    scoreElement.setAttribute("id", "averageRating");
+    scoreElement.style.margin = "8px 0 16px";
+    scoreElement.textContent = "Season average: " + averageRating.toFixed(1) + "\u2b50";
+    target.appendChild(scoreElement);
+}
+
+function calculateAverageScore() {
+    renderAverageScore(getEpisodeRatings());
+}
+
+function setupAverageScoreObserver() {
+    var observer;
+    var timeoutId;
+    var main = document.querySelector("main");
+
+    if (!main) {
+        return;
+    }
+
+    calculateAverageScore();
+
+    observer = new MutationObserver(function () {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(calculateAverageScore, 200);
+    });
+
+    observer.observe(main, { childList: true, subtree: true });
+}
+
+setupAverageScoreObserver();
